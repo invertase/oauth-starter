@@ -40,9 +40,10 @@ interface AccessToken {
 }
 
 interface OAuthClient {
-  secret: string;
+  secret?: string;
   name: string;
   redirectUris: string[];
+  public?: boolean;
 }
 
 const authorizationCodes = new Map<string, AuthorizationCode>();
@@ -51,50 +52,20 @@ const accessTokens = new Map<string, AccessToken>();
 
 const mockClients: Record<string, OAuthClient> = {
   "mock-client-id": {
-    secret: "mock-client-secret",
     name: "Mock OAuth Client",
     redirectUris: [
       "http://localhost:5173/callback",
       "http://localhost:5173/auth/callback",
     ],
-  },
-  "google-mock": {
-    secret: "google-mock-secret",
-    name: "Google Mock",
-    redirectUris: [
-      "http://localhost:5173/callback",
-      "http://localhost:5173/auth/callback",
-    ],
-  },
-  "github-mock": {
-    secret: "github-mock-secret",
-    name: "GitHub Mock",
-    redirectUris: [
-      "http://localhost:5173/callback",
-      "http://localhost:5173/auth/callback",
-    ],
+    public: true,
   },
 };
 
-const mockUsers = {
-  google: {
-    id: "google-user-12345",
-    email: "user@gmail.com",
-    name: "Google Test User",
-    picture: "https://via.placeholder.com/150/0000FF/FFFFFF?text=G",
-  },
-  github: {
-    id: "github-user-67890",
-    email: "user@github.com",
-    name: "GitHub Test User",
-    picture: "https://via.placeholder.com/150/000000/FFFFFF?text=GH",
-  },
-  default: {
-    id: "default-user-11111",
-    email: "user@example.com",
-    name: "Test User",
-    picture: "https://via.placeholder.com/150/CCCCCC/000000?text=U",
-  },
+const mockUser = {
+  id: "default-user-11111",
+  email: "user@example.com",
+  name: "Test User",
+  picture: "https://randomuser.me/api/portraits/lego/5.jpg",
 };
 
 function generateToken(): string {
@@ -215,7 +186,15 @@ app.post("/oauth/token", (req, res) => {
   }
 
   const client = mockClients[client_id];
-  if (!client || client.secret !== client_secret) {
+  if (!client) {
+    return res.status(401).json({
+      error: "invalid_client",
+      error_description: "Unknown client",
+    });
+  }
+
+  // For confidential clients, validate the secret
+  if (!client.public && client.secret !== client_secret) {
     return res.status(401).json({
       error: "invalid_client",
       error_description: "Invalid client credentials",
@@ -256,6 +235,14 @@ app.post("/oauth/token", (req, res) => {
       });
     }
 
+    // Public clients MUST use PKCE
+    if (client.public && !authCodeData.codeChallenge) {
+      return res.status(400).json({
+        error: "invalid_request",
+        error_description: "PKCE is required for public clients",
+      });
+    }
+
     if (authCodeData.codeChallenge) {
       if (!code_verifier) {
         return res.status(400).json({
@@ -284,17 +271,12 @@ app.post("/oauth/token", (req, res) => {
 
     const accessToken = `mock_access_token_${generateToken()}`;
     const refreshToken = `mock_refresh_token_${generateToken()}`;
-    const userId = client_id.includes("google")
-      ? "google"
-      : client_id.includes("github")
-      ? "github"
-      : "default";
 
     accessTokens.set(accessToken, {
       token: accessToken,
       clientId: client_id,
       scope: authCodeData.scope,
-      userId,
+      userId: "default",
       expiresAt: Date.now() + 3600 * 1000, // 1 hour
     });
 
@@ -302,7 +284,7 @@ app.post("/oauth/token", (req, res) => {
       token: refreshToken,
       clientId: client_id,
       scope: authCodeData.scope,
-      userId,
+      userId: "default",
     });
 
     return res.json({
@@ -411,10 +393,7 @@ app.get("/oauth/userinfo", (req, res) => {
     });
   }
 
-  const userType = tokenData.userId as keyof typeof mockUsers;
-  const userData = mockUsers[userType] || mockUsers.default;
-
-  res.json(userData);
+  res.json(mockUser);
 });
 
 const server = app.listen(PORT, () => {

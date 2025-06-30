@@ -5,9 +5,9 @@ A mock OAuth 2.0 authorization server for testing OAuth flows with PKCE support.
 ## Features
 
 - Full OAuth 2.0 authorization code flow
-- PKCE (Proof Key for Code Exchange) support
+- PKCE (Proof Key for Code Exchange) support for public clients
 - 10% random error rate for testing error handling
-- Multiple mock client configurations
+- Public client configuration (no client secret required)
 - User profile endpoint
 
 ## API Endpoints
@@ -27,7 +27,7 @@ Initiates the OAuth 2.0 authorization flow.
 | `response_type` | Yes | Must be `code` |
 | `scope` | No | Space-separated scopes (default: `profile email`) |
 | `state` | No | Opaque value for maintaining state |
-| `code_challenge` | No | PKCE code challenge |
+| `code_challenge` | Yes* | PKCE code challenge (*required for public clients) |
 | `code_challenge_method` | No | PKCE method (`plain` or `S256`, default: `plain`) |
 
 #### Response
@@ -71,8 +71,8 @@ For authorization code exchange:
 | `code` | Yes | The authorization code |
 | `redirect_uri` | Yes | Must match the authorization request |
 | `client_id` | Yes | The client identifier |
-| `client_secret` | Yes | The client secret |
-| `code_verifier` | Conditional | Required if PKCE was used |
+| `client_secret` | No | Not required for public clients |
+| `code_verifier` | Yes* | Required for public clients using PKCE |
 
 For refresh token:
 
@@ -81,7 +81,7 @@ For refresh token:
 | `grant_type` | Yes | Must be `refresh_token` |
 | `refresh_token` | Yes | The refresh token |
 | `client_id` | Yes | The client identifier |
-| `client_secret` | Yes | The client secret |
+| `client_secret` | No | Not required for public clients |
 
 #### Response
 
@@ -113,7 +113,6 @@ curl -X POST http://localhost:3001/oauth/token \
   -d "code=abc123" \
   -d "redirect_uri=http://localhost:5173/callback" \
   -d "client_id=mock-client-id" \
-  -d "client_secret=mock-client-secret" \
   -d "code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 ```
 
@@ -136,7 +135,7 @@ Authorization: Bearer {access_token}
   "id": "default-user-11111",
   "email": "user@example.com",
   "name": "Test User",
-  "picture": "https://via.placeholder.com/150/CCCCCC/000000?text=U"
+  "picture": "https://randomuser.me/api/portraits/lego/5.jpg"
 }
 ```
 
@@ -156,38 +155,33 @@ curl http://localhost:3001/oauth/userinfo \
   -H "Authorization: Bearer mock_access_token_..."
 ```
 
-## Available Test Clients
+## Available Test Client
 
-### 1. Default Mock Client
+### Mock Public Client
 - **Client ID**: `mock-client-id`
-- **Client Secret**: `mock-client-secret`
+- **Type**: Public client (no secret required)
+- **PKCE**: Required
 - **Redirect URIs**: 
   - `http://localhost:5173/callback`
   - `http://localhost:5173/auth/callback`
 
-### 2. Google Mock Client
-- **Client ID**: `google-mock`
-- **Client Secret**: `google-mock-secret`
-- **User Profile**: Google-themed test user
-
-### 3. GitHub Mock Client
-- **Client ID**: `github-mock`
-- **Client Secret**: `github-mock-secret`
-- **User Profile**: GitHub-themed test user
-
 ## PKCE Implementation
 
-The server supports PKCE as defined in [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636):
+The server enforces PKCE for public clients as defined in [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636):
 
-1. **Code Challenge Methods**:
+1. **Public Client Requirements**:
+   - PKCE is mandatory for `mock-client-id`
+   - No client secret is required or accepted
+
+2. **Code Challenge Methods**:
    - `plain`: Direct comparison (not recommended)
    - `S256`: SHA256 hash of the verifier (recommended)
 
-2. **Code Verifier Requirements**:
+3. **Code Verifier Requirements**:
    - 43-128 characters
    - Characters: `[A-Z] [a-z] [0-9] - . _ ~`
 
-3. **Code Challenge for S256**:
+4. **Code Challenge for S256**:
    ```
    code_challenge = BASE64URL(SHA256(code_verifier))
    ```
@@ -257,7 +251,6 @@ const response = await fetch('http://localhost:3001/oauth/token', {
     code: authorizationCode,
     redirect_uri: 'http://localhost:5173/callback',
     client_id: 'mock-client-id',
-    client_secret: 'mock-client-secret',
     code_verifier: codeVerifier,
   }),
 });
@@ -277,4 +270,5 @@ const userResponse = await fetch('http://localhost:3001/oauth/userinfo', {
 - Authorization codes expire after 5 minutes
 - Access tokens expire after 1 hour
 - The server validates all PKCE parameters strictly
+- Public clients must use PKCE
 - All registered redirect URIs are on `http://localhost:5173`
