@@ -3,6 +3,8 @@
 ## Overview
 This is a 1-hour technical test to implement PKCE (Proof Key for Code Exchange) in the OAuth 2.0 frontend client application located in `/app`.
 
+⚠️ IMPORTANT: This test is FRONTEND ONLY. Do NOT modify the mock OAuth server.
+
 ## Setup
 1. Install dependencies:
    ```bash
